@@ -18,7 +18,7 @@ def parse_superblock(sbdata):
     idx += 2
     (sbdict["zmap_blocks"],) = struct.unpack("<H", sbdata[idx : idx + 2])
     idx += 2
-    (sbdict["firstdatazones"],) = struct.unpack("<H", sbdata[idx : idx + 2])
+    (sbdict["firstdatazone"],) = struct.unpack("<H", sbdata[idx : idx + 2])
     idx += 2
     (sbdict["log_zone_size"],) = struct.unpack("<H", sbdata[idx : idx + 2])
     idx += 2
@@ -36,6 +36,7 @@ def parse_superblock(sbdata):
 def parse_inodetable(sbdata):
 
     sbinodeentry = {}
+    zonelist = []
 
     idx = 0
     (sbinodeentry["mode"],) = struct.unpack("<H", sbdata[idx : idx + 2])
@@ -50,8 +51,32 @@ def parse_inodetable(sbdata):
     idx += 1
     (sbinodeentry["links"],) = struct.unpack("<B", sbdata[idx : idx + 1])
     idx += 1
+    for i in range (8):
+        (zone,) = struct.unpack("<H", sbdata[idx : idx + 2])
+        zonelist.append(zone)
+        sbinodeentry["zone"] = zonelist
+        idx += 2
 
-    return sbinodeentry
+
+    if (zonelist != [0, 0, 0, 0, 0, 0, 0, 0]): return sbinodeentry
+
+
+def get_file_name(diskimg, inodezones, firstdatazone):
+
+    #Go to first data block of inode
+    diskimg.seek(BLOCK_SIZE * firstdatazone, 0)
+
+    print(inodezones[1])
+
+    #Go to the data zone with the file name
+    diskimg.seek(inodezones[1] * BLOCK_SIZE, 1)
+    diskimg.read(BLOCK_SIZE)
+
+    idx = 1
+    (filename,) = struct.unpack("<c", sbdata[idx : idx + 1])
+
+    print(filename)
+
 
 
 if __name__ == "__main__":
@@ -85,16 +110,50 @@ if __name__ == "__main__":
         # Calculate the amount of blocks needed for all the inodes
         INODETABLE_BLOCKS = math.ceil(sbdict['ninodes'] * 32 / BLOCK_SIZE)
 
-        sbdata = f.read(32)
-
         sbinodetable = {}
 
+        j = 0
+
         for i in range(sbdict['ninodes']):
-            sbinodetable[i] = parse_inodetable(sbdata)
-            f.seek(32, 1)
             sbdata = f.read(32)
+            if (parse_inodetable(sbdata) != None):
+                sbinodetable[j] = parse_inodetable(sbdata)
+                j += 1
+            f.seek(32, 1)
 
         for i in range(len(sbinodetable)):
             print(sbinodetable[i])
-        #print(sbinodetable)
-        print(sbdict)
+            #print(sbinodetable[i]['mode'] == 0o0100000)
+
+
+        #### PARSING FIRST DATA ZONE ####
+
+        # Go to the first data zone
+        f.seek(BLOCK_SIZE * sbdict['firstdatazone'])
+
+        sbdata = f.read(BLOCK_SIZE)
+
+        for i in range(len(sbinodetable)):
+            get_file_name(f, sbinodetable[i]['zone'], sbdict['firstdatazone'])
+
+
+        #### LOOKING FOR DATAZONE FOR INODE ####
+        f.seek(BLOCK_SIZE * 2, 0)
+
+        sbdata = f.read(INODEMAP_BLOCK_SIZE)
+
+        inodemapdict = {}
+        idx = 0
+        while (idx != INODEMAP_BLOCK_SIZE):
+
+            (inode,) = struct.unpack("<b", sbdata[idx : idx + 1])
+            #print(inode)
+            idx += 1
+            (available,) = struct.unpack("<b", sbdata[idx : idx + 1])
+            #print(f"Available: {available}")
+            inodemapdict[inode] = available
+            idx += 1
+
+
+        # print(inodemapdict)
+        # print(sbdict)
