@@ -62,9 +62,10 @@ def parse_inodetable(sbdata):
     return sbinodeentry
 
 
-def get_file_name(diskimg, inodeinfo, entrysize):
+def get_file_names(diskimg, inodeinfo, entrysize, filename):
 
     zoneindex = 0
+    inodenr = 0
     zone = inodeinfo['zone'][zoneindex]
 
     while (zone > 0):
@@ -85,13 +86,22 @@ def get_file_name(diskimg, inodeinfo, entrysize):
             (filename,) = struct.unpack(f"<{entrysize - 2}s", datazone[idx : idx + entrysize - 2])
 
             printname = filename.rstrip(b'\0')
-            if (printname == b''): continue
-            sys.stdout.buffer.write(printname)
-            sys.stdout.buffer.write(b'\n')
+
+            print(filename == printname)
+
+            if (filename != ''): 
+                print(filename)
+                if (filename == printname): inodenr = inode
+
+            else:
+                if (printname == b''): continue
+                sys.stdout.buffer.write(printname)
+                sys.stdout.buffer.write(b'\n')
 
         zoneindex += 1
         zone = inodeinfo['zone'][zoneindex]
 
+    if (filename != ''): return inodenr
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
@@ -100,6 +110,7 @@ if __name__ == "__main__":
 
     diskimg = sys.argv[1]
     cmd = sys.argv[2]
+    if (len(sys.argv) > 3): file = sys.argv[3]
 
     with open(diskimg, "rb") as f:
 
@@ -134,10 +145,13 @@ if __name__ == "__main__":
 
         # For each file in the inodetable, get it's name
         #for i in range(len(sbinodetable)):
-        if (cmd == 'ls'): get_file_name(f, sbinodetable['root'], entrysize)
+        if (cmd == 'ls'): get_file_names(f, sbinodetable['root'], entrysize, '')
 
+        #if (file): print(file)
 
-
+        if (cmd == 'cat'): 
+            inodenr = get_file_names(f, sbinodetable['root'], entrysize, file)
+            print(inodenr)
         
         
         
