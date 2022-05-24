@@ -64,24 +64,33 @@ def parse_inodetable(sbdata):
 
 def get_file_name(diskimg, inodeinfo, entrysize):
 
-    print(inodeinfo['zone'])
-    print(inodeinfo['size'])
+    zoneindex = 0
+    zone = inodeinfo['zone'][zoneindex]
 
+    while (zone > 0):
 
-    diskimg.seek(BLOCK_SIZE * inodeinfo['zone'][0], 0)
+        diskimg.seek(BLOCK_SIZE * zone, 0)
 
-    for i in range(int(inodeinfo['size'] / entrysize)):
+        loopamount = int(inodeinfo['size'] / entrysize)
+        if (loopamount > (BLOCK_SIZE / entrysize)): loopamount = int(BLOCK_SIZE / entrysize)
 
-        #Go to the data zone with the file name
-        sbdata = diskimg.read(entrysize)
+        for i in range(loopamount):
 
-        idx = 0
-        (inode,) = struct.unpack("<H", sbdata[idx : idx + 2])
-        idx += 2
-        (filename,) = struct.unpack("<14s", sbdata[idx : idx + entrysize - 2])
+            #Go to the data zone with the file name
+            datazone = diskimg.read(entrysize)
 
-        print(f'filename = {filename}')
+            idx = 0
+            (inode,) = struct.unpack("<H", datazone[idx : idx + 2])
+            idx += 2
+            (filename,) = struct.unpack(f"<{entrysize - 2}s", datazone[idx : idx + entrysize - 2])
 
+            printname = filename.rstrip(b'\0')
+            if (printname == b''): continue
+            sys.stdout.buffer.write(printname)
+            sys.stdout.buffer.write(b'\n')
+
+        zoneindex += 1
+        zone = inodeinfo['zone'][zoneindex]
 
 
 if __name__ == "__main__":
@@ -123,10 +132,10 @@ if __name__ == "__main__":
         if (sbdict['magic'] == 4991): entrysize = 16
         else: entrysize = 32
 
-
         # For each file in the inodetable, get it's name
         #for i in range(len(sbinodetable)):
-        get_file_name(f, sbinodetable['root'], entrysize)
+        if (cmd == 'ls'): get_file_name(f, sbinodetable['root'], entrysize)
+
 
 
         
