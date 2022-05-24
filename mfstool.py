@@ -56,30 +56,29 @@ def parse_inodetable(sbdata):
         zonelist.append(zone)
         sbinodeentry["zone"] = zonelist
         idx += 2
+    #print(zonelist)
 
 
-    if (zonelist != [0, 0, 0, 0, 0, 0, 0, 0]): return sbinodeentry
+    return sbinodeentry
 
 
-def get_file_name(diskimg, inodezones, firstdatazone):
+def get_file_name(diskimg, inodeinfo, entrysize):
 
-    print(inodezones)
+    print(inodeinfo['zone'])
+    print(inodeinfo['size'])
 
-    for i in range(len(inodezones)):
 
-        #Go to first data block of inode
-        diskimg.seek(BLOCK_SIZE * firstdatazone, 0)
+    diskimg.seek(BLOCK_SIZE * inodeinfo['zone'][0], 0)
+
+    for i in range(int(inodeinfo['size'] / entrysize)):
 
         #Go to the data zone with the file name
-        diskimg.seek(2, 1)
-        sbdata = diskimg.read(BLOCK_SIZE)
-
-        print(inodezones[i])
+        sbdata = diskimg.read(entrysize)
 
         idx = 0
-        (inode,) = struct.unpack("<b", sbdata[idx : idx + 1])
-        idx += 1
-        (filename,) = struct.unpack("<c", sbdata[idx : idx + 1])
+        (inode,) = struct.unpack("<H", sbdata[idx : idx + 2])
+        idx += 2
+        (filename,) = struct.unpack("<14s", sbdata[idx : idx + entrysize - 2])
 
         print(f'filename = {filename}')
 
@@ -96,15 +95,12 @@ if __name__ == "__main__":
     with open(diskimg, "rb") as f:
 
         # Skip boot block
-        f.seek(BLOCK_SIZE, 0)
+        f.seek(BLOCK_SIZE)
         # Read super block
         sbdata = f.read(BLOCK_SIZE)
 
         # Save data from superblock in sbdict
         sbdict = parse_superblock(sbdata)
-
-        # Move past superblock
-        f.seek(BLOCK_SIZE, 1)
 
         # Get sizes of inodemap and zonemap
         INODEMAP_BLOCK_SIZE = sbdict['imap_blocks'] * BLOCK_SIZE
@@ -118,18 +114,19 @@ if __name__ == "__main__":
 
         sbinodetable = {}
 
-        j = 0
         # Store all the inode information in the sbinodetable dictionary
-        for i in range(sbdict['ninodes']):
-            sbdata = f.read(32)
-            if (parse_inodetable(sbdata) != None):
-                sbinodetable[j] = parse_inodetable(sbdata)
-                j += 1
-            f.seek(32, 1)
+        sbdata = f.read(32)
+        if (parse_inodetable(sbdata) != None):
+            sbinodetable['root'] = parse_inodetable(sbdata)
+
+
+        if (sbdict['magic'] == 4991): entrysize = 16
+        else: entrysize = 32
+
 
         # For each file in the inodetable, get it's name
-        for i in range(len(sbinodetable)):
-            get_file_name(f, sbinodetable[i]['zone'], sbdict['firstdatazone'])
+        #for i in range(len(sbinodetable)):
+        get_file_name(f, sbinodetable['root'], entrysize)
 
 
         
