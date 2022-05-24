@@ -1,3 +1,4 @@
+from stat import *
 import sys
 import struct
 
@@ -56,16 +57,32 @@ def parse_inodetable(sbdata):
         zonelist.append(zone)
         sbinodeentry["zone"] = zonelist
         idx += 2
-    #print(zonelist)
-
 
     return sbinodeentry
 
+def get_inode_data(sbdata, f, inodenr):
 
-def get_file_names(diskimg, inodeinfo, entrysize, filename):
+    # Get sizes of inodemap and zonemap
+    INODEMAP_BLOCK_SIZE = sbdict['imap_blocks'] * BLOCK_SIZE
+    ZONEMAP_BLOCK_SIZE = sbdict['zmap_blocks'] * BLOCK_SIZE
+
+    # Skip inodemap block and zonemap block
+    f.seek(BLOCK_SIZE * 2 + INODEMAP_BLOCK_SIZE + ZONEMAP_BLOCK_SIZE, 0)
+
+    # Store all the inode information in the sbinodetable dictionary
+    f.seek(32 * inodenr, 1)
+    inodedatafile = f.read(32)
+    if (parse_inodetable(sbdata) != None):
+        inodedata = parse_inodetable(inodedatafile)
+
+    return inodedata
+
+
+def get_zone_data(diskimg, inodeinfo, entrysize):
+
+    data = {}
 
     zoneindex = 0
-    inodenr = 0
     zone = inodeinfo['zone'][zoneindex]
 
     while (zone > 0):
@@ -77,31 +94,33 @@ def get_file_names(diskimg, inodeinfo, entrysize, filename):
 
         for i in range(loopamount):
 
-            #Go to the data zone with the file name
+            #Go to the data zone
             datazone = diskimg.read(entrysize)
 
-            idx = 0
-            (inode,) = struct.unpack("<H", datazone[idx : idx + 2])
-            idx += 2
-            (filename,) = struct.unpack(f"<{entrysize - 2}s", datazone[idx : idx + entrysize - 2])
+            if (S_ISDIR(inodeinfo['mode'])):
+                idx = 0
+                (inode,) = struct.unpack("<H", datazone[idx : idx + 2])
+                idx += 2
+                (filename,) = struct.unpack(f"<{entrysize - 2}s", datazone[idx : idx + entrysize - 2])
 
-            printname = filename.rstrip(b'\0')
-
-            print(filename == printname)
-
-            if (filename != ''): 
-                print(filename)
-                if (filename == printname): inodenr = inode
-
-            else:
+                printname = filename.rstrip(b'\0')
                 if (printname == b''): continue
-                sys.stdout.buffer.write(printname)
-                sys.stdout.buffer.write(b'\n')
+                data[printname] = inode
+
+            if (S_ISREG(inodeinfo['mode'])):
+                idx = 0
+                (filetext,) = struct.unpack(f"<{entrysize}s", datazone[idx : idx + entrysize])
+
+                printtext = filetext.rstrip(b'\0')
+                if (printtext == b''): continue
+                data[printtext] = i
+
 
         zoneindex += 1
         zone = inodeinfo['zone'][zoneindex]
 
-    if (filename != ''): return inodenr
+    return data
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
@@ -122,57 +141,51 @@ if __name__ == "__main__":
         # Save data from superblock in sbdict
         sbdict = parse_superblock(sbdata)
 
-        # Get sizes of inodemap and zonemap
-        INODEMAP_BLOCK_SIZE = sbdict['imap_blocks'] * BLOCK_SIZE
-        ZONEMAP_BLOCK_SIZE = sbdict['zmap_blocks'] * BLOCK_SIZE
-
-        # Skip inodemap block and zonemap block
-        f.seek(INODEMAP_BLOCK_SIZE + ZONEMAP_BLOCK_SIZE, 1)
-
-        # Calculate the amount of blocks needed for all the inodes
-        INODETABLE_BLOCKS = math.ceil(sbdict['ninodes'] * 32 / BLOCK_SIZE)
-
-        sbinodetable = {}
-
-        # Store all the inode information in the sbinodetable dictionary
-        sbdata = f.read(32)
-        if (parse_inodetable(sbdata) != None):
-            sbinodetable['root'] = parse_inodetable(sbdata)
-
-
         if (sbdict['magic'] == 4991): entrysize = 16
         else: entrysize = 32
 
-        # For each file in the inodetable, get it's name
-        #for i in range(len(sbinodetable)):
-        if (cmd == 'ls'): get_file_names(f, sbinodetable['root'], entrysize, '')
+        # Calculate the amount of blocks needed for all the inodes
+        # INODETABLE_BLOCKS = math.ceil(sbdict['ninodes'] * 32 / BLOCK_SIZE)
 
-        #if (file): print(file)
+        inodedata = get_inode_data(sbdata, f, 0)
+        rootdata = get_zone_data(f, inodedata, entrysize)
 
-        if (cmd == 'cat'): 
-            inodenr = get_file_names(f, sbinodetable['root'], entrysize, file)
-            print(inodenr)
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        #### LOOKING FOR DATAZONE FOR INODE ####
-        f.seek(BLOCK_SIZE * 2, 0)
+        # Get the files in the root data
+        if (cmd == 'ls'): 
+            print("\n\n")
+            for i in rootdata:
+                sys.stdout.buffer.write(i)
+                sys.stdout.buffer.write(b'\n')       
 
-        sbdata = f.read(INODEMAP_BLOCK_SIZE)
+        if (cmd == 'cat'):
+            inodenr = rootdata[file.encode("utf-8")]
+            inodedata = get_inode_data(sbdata, f, inodenr)
+            inodezonedata = get_zone_data(f, inodedata, BLOCK_SIZE)
+            for i in inodezonedata:
+                print(i)
+                # sys.stdout.buffer.write(i)
+                # sys.stdout.buffer.write(b'\n')      
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # #### LOOKING FOR DATAZONE FOR INODE ####
+        # f.seek(BLOCK_SIZE * 2, 0)
 
-        inodemapdict = {}
-        idx = 0
-        while (idx != INODEMAP_BLOCK_SIZE):
+        # sbdata = f.read(INODEMAP_BLOCK_SIZE)
 
-            (inode,) = struct.unpack("<b", sbdata[idx : idx + 1])
-            idx += 1
-            (available,) = struct.unpack("<b", sbdata[idx : idx + 1])
-            inodemapdict[inode] = available
-            idx += 1
+        # inodemapdict = {}
+        # idx = 0
+        # while (idx != INODEMAP_BLOCK_SIZE):
+
+        #     (inode,) = struct.unpack("<b", sbdata[idx : idx + 1])
+        #     idx += 1
+        #     (available,) = struct.unpack("<b", sbdata[idx : idx + 1])
+        #     inodemapdict[inode] = available
+        #     idx += 1
