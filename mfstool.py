@@ -110,10 +110,14 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
 
         if (S_ISREG(inodeinfo['mode'])):
             #Go to the data zone
+
+            size = inodeinfo['size']
+            if (inodeinfo['size'] > BLOCK_SIZE): size = BLOCK_SIZE
+
             datazone = diskimg.read(inodeinfo['size'])
 
             idx = 0
-            (filetext,) = struct.unpack(f"<{inodeinfo['size']}s", datazone[idx : idx + inodeinfo['size']])
+            (filetext,) = struct.unpack(f"<{size}s", datazone[idx : idx + size])
 
             printtext = filetext.rstrip(b'\0')
             if (printtext == b''): continue
@@ -167,13 +171,16 @@ if __name__ == "__main__":
             for i in range (len(file_split) - 1):
                 inodenr = directory_data[file_split[i].encode("utf-8")]
                 directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
-                directory_data = get_zone_data(f, directory_inode_data, entrysize)
+                directory_data = get_zone_data(f, directory_inode_data, 1)
                 j += 1
 
             # Read the text from the file
             inodenr = directory_data[file_split[j].encode("utf-8")]
             inode_data = get_inode_data(sbdata, f, inodenr - 1)
-            inodezonedata = get_zone_data(f, inode_data, entrysize)
+            print(inode_data)
+            inodezonedata = get_zone_data(f, inode_data, 1)
 
-            for item in inodezonedata:
-                sys.stdout.buffer.write(inodezonedata[item])
+            #print(inodezonedata)
+
+            # for item in inodezonedata:
+            #     sys.stdout.buffer.write(inodezonedata[item])
