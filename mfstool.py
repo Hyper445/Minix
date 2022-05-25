@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
         inodedata = get_inode_data(sbdata, f, 0)
         rootdata = get_zone_data(f, inodedata, entrysize)
-
+        
         # Get the files in the root data
         if (cmd == 'ls'): 
             for i in rootdata:
@@ -169,18 +169,45 @@ if __name__ == "__main__":
 
             # Go through the directories to find the file
             for i in range (len(file_split) - 1):
-                inodenr = directory_data[file_split[i].encode("utf-8")]
-                directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
-                directory_data = get_zone_data(f, directory_inode_data, 1)
-                j += 1
+
+                try:
+                    inodenr = directory_data[file_split[i].encode("utf-8")]
+                    directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
+                    directory_data = get_zone_data(f, directory_inode_data, 1)
+                    j += 1
+                except:
+                    print("Couldn't find file!")
 
             # Read the text from the file
-            inodenr = directory_data[file_split[j].encode("utf-8")]
-            inode_data = get_inode_data(sbdata, f, inodenr - 1)
-            print(inode_data)
-            inodezonedata = get_zone_data(f, inode_data, 1)
+            try:
+                inodenr = directory_data[file_split[j].encode("utf-8")]
+                inode_data = get_inode_data(sbdata, f, inodenr - 1)
+                inodezonedata = get_zone_data(f, inode_data, 1)
 
-            #print(inodezonedata)
+                for item in inodezonedata:
+                    sys.stdout.buffer.write(inodezonedata[item])
 
-            # for item in inodezonedata:
-            #     sys.stdout.buffer.write(inodezonedata[item])
+            except:
+                print("Couldn't find file!")
+        
+        if (cmd == 'touch'):
+
+            f.seek(BLOCK_SIZE * 2, 0)
+
+            inode_map_data = f.read(BLOCK_SIZE * sbdict['imap_blocks'])
+
+            idx = 0
+
+            for i in range(1):
+                #(bit,) = struct.unpack("<H", inode_map_data[idx : idx + 2])
+                
+                bit = bytearray(f.read(BLOCK_SIZE))
+                print(bit)
+                #print(f'Bit = {str(bit)}')
+
+
+
+
+
+            
+
