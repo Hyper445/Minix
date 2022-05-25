@@ -107,9 +107,8 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
                 if (printname == b''): continue
                 data[printname] = inode
 
-        else:
-        #if (S_ISREG(inodeinfo['mode'])):
 
+        if (S_ISREG(inodeinfo['mode'])):
             #Go to the data zone
             datazone = diskimg.read(inodeinfo['size'])
 
@@ -151,9 +150,6 @@ if __name__ == "__main__":
         if (sbdict['magic'] == 4991): entrysize = 16
         else: entrysize = 32
 
-        # Calculate the amount of blocks needed for all the inodes
-        # INODETABLE_BLOCKS = math.ceil(sbdict['ninodes'] * 32 / BLOCK_SIZE)
-
         inodedata = get_inode_data(sbdata, f, 0)
         rootdata = get_zone_data(f, inodedata, entrysize)
 
@@ -163,26 +159,21 @@ if __name__ == "__main__":
                 sys.stdout.buffer.write(i)
                 sys.stdout.buffer.write(b'\n')
 
-        # for i in range(10):
-        #     data = get_inode_data(sbdata, f, i)
-        #     print(data)
-
         if (cmd == 'cat'):
+            directory_data = rootdata
+            j = 0
 
-            if (len(file_split) == 2):
-                inodenr = rootdata[file_split[0].encode("utf-8")]
+            # Go through the directories to find the file
+            for i in range (len(file_split) - 1):
+                inodenr = directory_data[file_split[i].encode("utf-8")]
                 directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
                 directory_data = get_zone_data(f, directory_inode_data, entrysize)
+                j += 1
 
-                inodenr = directory_data[file_split[1].encode("utf-8")]
-                inodedata = get_inode_data(sbdata, f, inodenr - 1)
-                inodezonedata = get_zone_data(f, inodedata, 1)
-
-            else:
-                inodenr = rootdata[file_split[0].encode("utf-8")]
-                inode_data = get_inode_data(sbdata, f, inodenr - 1)
-                inodezonedata = get_zone_data(f, inode_data, entrysize)
+            # Read the text from the file
+            inodenr = directory_data[file_split[j].encode("utf-8")]
+            inode_data = get_inode_data(sbdata, f, inodenr - 1)
+            inodezonedata = get_zone_data(f, inode_data, entrysize)
 
             for item in inodezonedata:
-                print(inodezonedata[item])
-                #sys.stdout.buffer.write(inodezonedata[item])
+                sys.stdout.buffer.write(inodezonedata[item])
