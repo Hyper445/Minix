@@ -107,8 +107,8 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
                 if (printname == b''): continue
                 data[printname] = inode
 
-
-        if (S_ISREG(inodeinfo['mode'])):
+        else:
+        #if (S_ISREG(inodeinfo['mode'])):
 
             #Go to the data zone
             datazone = diskimg.read(inodeinfo['size'])
@@ -134,7 +134,9 @@ if __name__ == "__main__":
 
     diskimg = sys.argv[1]
     cmd = sys.argv[2]
-    if (len(sys.argv) > 3): file = sys.argv[3]
+    if (len(sys.argv) > 3): 
+        file = sys.argv[3]
+        file_split = file.split("/")    
 
     with open(diskimg, "rb") as f:
 
@@ -161,10 +163,26 @@ if __name__ == "__main__":
                 sys.stdout.buffer.write(i)
                 sys.stdout.buffer.write(b'\n')
 
+        # for i in range(10):
+        #     data = get_inode_data(sbdata, f, i)
+        #     print(data)
+
         if (cmd == 'cat'):
-            inodenr = rootdata[file.encode("utf-8")]
-            inodedata = get_inode_data(sbdata, f, inodenr - 1)
-            inodezonedata = get_zone_data(f, inodedata, 1)
+
+            if (len(file_split) == 2):
+                inodenr = rootdata[file_split[0].encode("utf-8")]
+                directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
+                directory_data = get_zone_data(f, directory_inode_data, entrysize)
+
+                inodenr = directory_data[file_split[1].encode("utf-8")]
+                inodedata = get_inode_data(sbdata, f, inodenr - 1)
+                inodezonedata = get_zone_data(f, inodedata, 1)
+
+            else:
+                inodenr = rootdata[file_split[0].encode("utf-8")]
+                inode_data = get_inode_data(sbdata, f, inodenr - 1)
+                inodezonedata = get_zone_data(f, inode_data, entrysize)
+
             for item in inodezonedata:
-                sys.stdout.buffer.write(inodezonedata[item])
-                sys.stdout.buffer.write(b'\n')      
+                print(inodezonedata[item])
+                #sys.stdout.buffer.write(inodezonedata[item])
