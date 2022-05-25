@@ -52,7 +52,7 @@ def parse_inodetable(sbdata):
     idx += 1
     (sbinodeentry["links"],) = struct.unpack("<B", sbdata[idx : idx + 1])
     idx += 1
-    for i in range (8):
+    for i in range (9):
         (zone,) = struct.unpack("<H", sbdata[idx : idx + 2])
         zonelist.append(zone)
         sbinodeentry["zone"] = zonelist
@@ -92,12 +92,12 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
         loopamount = int(inodeinfo['size'] / entrysize)
         if (loopamount > (BLOCK_SIZE / entrysize)): loopamount = int(BLOCK_SIZE / entrysize)
 
-        for i in range(loopamount):
+        if (S_ISDIR(inodeinfo['mode'])):
+            for i in range(loopamount):
 
-            #Go to the data zone
-            datazone = diskimg.read(entrysize)
+                #Go to the data zone
+                datazone = diskimg.read(entrysize)
 
-            if (S_ISDIR(inodeinfo['mode'])):
                 idx = 0
                 (inode,) = struct.unpack("<H", datazone[idx : idx + 2])
                 idx += 2
@@ -107,13 +107,18 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
                 if (printname == b''): continue
                 data[printname] = inode
 
-            if (S_ISREG(inodeinfo['mode'])):
-                idx = 0
-                (filetext,) = struct.unpack(f"<{entrysize}s", datazone[idx : idx + entrysize])
 
-                printtext = filetext.rstrip(b'\0')
-                if (printtext == b''): continue
-                data[printtext] = i
+        if (S_ISREG(inodeinfo['mode'])):
+
+            #Go to the data zone
+            datazone = diskimg.read(inodeinfo['size'])
+
+            idx = 0
+            (filetext,) = struct.unpack(f"<{inodeinfo['size']}s", datazone[idx : idx + inodeinfo['size']])
+
+            printtext = filetext.rstrip(b'\0')
+            if (printtext == b''): continue
+            data[zone] = printtext
 
 
         zoneindex += 1
@@ -152,40 +157,14 @@ if __name__ == "__main__":
 
         # Get the files in the root data
         if (cmd == 'ls'): 
-            print("\n\n")
             for i in rootdata:
                 sys.stdout.buffer.write(i)
-                sys.stdout.buffer.write(b'\n')       
+                sys.stdout.buffer.write(b'\n')
 
         if (cmd == 'cat'):
             inodenr = rootdata[file.encode("utf-8")]
-            inodedata = get_inode_data(sbdata, f, inodenr)
-            inodezonedata = get_zone_data(f, inodedata, BLOCK_SIZE)
-            for i in inodezonedata:
-                print(i)
-                # sys.stdout.buffer.write(i)
-                # sys.stdout.buffer.write(b'\n')      
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        # #### LOOKING FOR DATAZONE FOR INODE ####
-        # f.seek(BLOCK_SIZE * 2, 0)
-
-        # sbdata = f.read(INODEMAP_BLOCK_SIZE)
-
-        # inodemapdict = {}
-        # idx = 0
-        # while (idx != INODEMAP_BLOCK_SIZE):
-
-        #     (inode,) = struct.unpack("<b", sbdata[idx : idx + 1])
-        #     idx += 1
-        #     (available,) = struct.unpack("<b", sbdata[idx : idx + 1])
-        #     inodemapdict[inode] = available
-        #     idx += 1
+            inodedata = get_inode_data(sbdata, f, inodenr - 1)
+            inodezonedata = get_zone_data(f, inodedata, 1)
+            for item in inodezonedata:
+                sys.stdout.buffer.write(inodezonedata[item])
+                sys.stdout.buffer.write(b'\n')      
