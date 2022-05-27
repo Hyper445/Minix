@@ -2,6 +2,8 @@ from stat import *
 import sys
 import struct
 import binascii
+from datetime import datetime
+import os
 
 import math
 
@@ -130,12 +132,77 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
 
     return data
 
+def get_inode_spot(file, skip_size):
 
-def is_set(x, n):
-    return x & 2 ** n != 0 
 
-    # a more bitwise- and performance-friendly version:
-    return x & 1 << n != 0
+    file.seek(skip_size, 0)
+    free_inode_nr = idx = 0
+
+    #Get the first available inode slot                
+    for i in range(sbdict['ninodes']):
+        data = f.read(1)
+        intdata = int.from_bytes(data, byteorder ='big')
+
+        if (free_inode_nr > 0): break
+
+        for j in range(8):
+            if ((intdata >> j) & 1):
+                idx += 1
+            else:
+                free_inode_nr = idx
+
+    return free_inode_nr
+
+def get_zone_spot(file, skip_size):
+
+    file.seek(skip_size, 0)
+
+    zonenr = 0
+    idx = 0
+    # Get the first available zone slot
+    while(zonenr == 0):
+        data = f.read(1)
+        intdata = int.from_bytes(data, byteorder ='big')
+
+        for j in range(8):
+            if ((intdata >> j) & 1):
+                idx += 1
+            else:
+                zonenr = idx - 1
+
+    return zonenr
+
+def get_free_root_entry(sbdata, file, entrysize):
+
+    inodenr = entry_nr = 0
+    print(sbdata['firstdatazone'])
+    file.seek(BLOCK_SIZE * sbdata['firstdatazone'], 0)
+    entrydata = file.read(entrysize)
+    inodenr = struct.unpack("<H", entrydata[0 : 2])
+
+    while (inodenr != 0):
+        entrydata = f.read(entrysize)
+        idx = 0
+        (inodenr,) = struct.unpack("<H", entrydata[idx : idx + 2])
+        print(inodenr)
+        entry_nr += 1
+        
+
+    print(entry_nr)
+    return idx
+
+
+
+
+# def insert_in_table(diskimg, inode, free_spot):
+
+#     with open (diskimg, "wb") as fwrite:
+#         #fwrite.write(read)
+#         # fwrite.seek(BLOCK_SIZE * 4, 0)
+#         # fwrite.seek((free_spot - 1) * 32, 1)
+#         print("Test")
+    
+#         #fwrite.close()
 
 
 if __name__ == "__main__":
@@ -152,99 +219,96 @@ if __name__ == "__main__":
     with open(diskimg, "rb") as f:
 
         # Skip boot block
-        f.seek(BLOCK_SIZE)
+        f.seek(BLOCK_SIZE, 0)
         # Read super block
+        print(f.tell())
         sbdata = f.read(BLOCK_SIZE)
-
+        print(f.tell())
         # Save data from superblock in sbdict
         sbdict = parse_superblock(sbdata)
+        print(sbdict)
+
+        print(os.stat(diskimg).st_size)
 
         if (sbdict['magic'] == 4991): entrysize = 16
         else: entrysize = 32
 
         inodedata = get_inode_data(sbdata, f, 0)
         rootdata = get_zone_data(f, inodedata, entrysize)
-        
+
+        print(rootdata)
+
         # Get the files in the root data
         if (cmd == 'ls'): 
+            print(rootdata)
             for i in rootdata:
                 sys.stdout.buffer.write(i)
                 sys.stdout.buffer.write(b'\n')
 
-        if (cmd == 'cat'):
-            directory_data = rootdata
-            j = 0
+        # # if (cmd == 'cat'):
+        # #     directory_data = rootdata
+        # #     j = 0
 
-            # Go through the directories to find the file
-            for i in range (len(file_split) - 1):
+        # #     # Go through the directories to find the file
+        # #     for i in range (len(file_split) - 1):
 
-                try:
-                    inodenr = directory_data[file_split[i].encode("utf-8")]
-                    directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
-                    directory_data = get_zone_data(f, directory_inode_data, 1)
-                    j += 1
-                except:
-                    print("Couldn't find file!")
+        # #         try:
+        # #             inodenr = directory_data[file_split[i].encode("utf-8")]
+        # #             directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
+        # #             directory_data = get_zone_data(f, directory_inode_data, 1)
+        # #             j += 1
+        # #         except:
+        # #             print("Couldn't find file!")
 
-            # Read the text from the file
-            try:
-                inodenr = directory_data[file_split[j].encode("utf-8")]
-                inode_data = get_inode_data(sbdata, f, inodenr - 1)
-                inodezonedata = get_zone_data(f, inode_data, 1)
+        # #     # Read the text from the file
+        # #     try:
+        # #         inodenr = directory_data[file_split[j].encode("utf-8")]
+        # #         inode_data = get_inode_data(sbdata, f, inodenr - 1)
+        # #         inodezonedata = get_zone_data(f, inode_data, 1)
 
-                for item in inodezonedata:
-                    sys.stdout.buffer.write(inodezonedata[item])
+        # #         for item in inodezonedata:
+        # #             sys.stdout.buffer.write(inodezonedata[item])
 
-            except:
-                print("Couldn't find file!")
+        # #     except:
+        # #         print("Couldn't find file!")
         
         if (cmd == 'touch'):
 
-            f.seek(BLOCK_SIZE * 2, 0)
+            skipped_size = BLOCK_SIZE * 2
+            free_inode_nr = get_inode_spot(f, skipped_size)
 
-            #inode_map_data = f.read(BLOCK_SIZE * sbdict['imap_blocks'])
+            skipped_size = BLOCK_SIZE * (2 + sbdict['imap_blocks'])
+            free_zone_nr = get_zone_spot(f, skipped_size) + sbdict['firstdatazone']
 
-            free_inode_nr = idx = 0
+            if (free_inode_nr) == 0: print("Full, baybee.")
+            
+            new_inode = {}
+            new_inode['mode'] = S_IFREG
+            new_inode['uid'] = 0
+            new_inode['size'] = 0
+            new_inode['time'] = int(datetime.now().timestamp())
+            new_inode['gid'] = 0
+            new_inode['links'] = 1
+            new_inode['zone'] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-            #Get the first available inode slot                
-            for i in range(sbdict['ninodes']):
-                data = f.read(1)
-                intdata = int.from_bytes(data, byteorder ='big')
+            root_entry_nr = get_free_root_entry(sbdict, f, entrysize)
 
-                if (free_inode_nr > 0): break
+            #update_datazone(diskimg, root_entry_nr)
 
-                for j in range(8):
-                    if ((intdata >> j) & 1):
-                        idx += 1
-                    else:
-                        free_inode_nr = idx
+    
+    if (cmd == 'touch'):
 
-            f.seek(BLOCK_SIZE * (2 + sbdict['zmap_blocks']))
+        #f.close()
+        #insert_in_table(diskimg, new_inode, free_inode_nr)
 
-            zonenr = 0
-            idx = 0
-            # Get the first available zone slot
-            while(zonenr == 0):
-                data = f.read(1)
-                intdata = int.from_bytes(data, byteorder ='big')
-
-                for j in range(8):
-                    if ((intdata >> j) & 1):
-                        idx += 1
-                    else:
-                        zonenr = idx - 1 + sbdict['firstdatazone']
-
-
-
-                print(free_inode_nr)
-                print(zonenr)
-
-
-
-
-            for i in range(10):
-                data = get_inode_data(sbdata, f, i)
-                print(data)
+        with open (diskimg, "w") as f:
+            #fwrite.write(read)
+            # fwrite.seek(BLOCK_SIZE * 4, 0)
+            # fwrite.seek((free_spot - 1) * 32, 1)
+            print("Hoi")
+            print(f.tell())
+            #f.seek(0, 0)
+            #fwrite.close()
 
 
 
