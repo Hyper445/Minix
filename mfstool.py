@@ -1,6 +1,7 @@
 from stat import *
 import sys
 import struct
+import binascii
 
 import math
 
@@ -130,6 +131,13 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
     return data
 
 
+def is_set(x, n):
+    return x & 2 ** n != 0 
+
+    # a more bitwise- and performance-friendly version:
+    return x & 1 << n != 0
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: mfstool.py image command params")
@@ -194,18 +202,49 @@ if __name__ == "__main__":
 
             f.seek(BLOCK_SIZE * 2, 0)
 
-            inode_map_data = f.read(BLOCK_SIZE * sbdict['imap_blocks'])
+            #inode_map_data = f.read(BLOCK_SIZE * sbdict['imap_blocks'])
 
+            free_inode_nr = idx = 0
+
+            #Get the first available inode slot                
+            for i in range(sbdict['ninodes']):
+                data = f.read(1)
+                intdata = int.from_bytes(data, byteorder ='big')
+
+                if (free_inode_nr > 0): break
+
+                for j in range(8):
+                    if ((intdata >> j) & 1):
+                        idx += 1
+                    else:
+                        free_inode_nr = idx
+
+            f.seek(BLOCK_SIZE * (2 + sbdict['zmap_blocks']))
+
+            zonenr = 0
             idx = 0
+            # Get the first available zone slot
+            while(zonenr == 0):
+                data = f.read(1)
+                intdata = int.from_bytes(data, byteorder ='big')
 
-            for i in range(1):
-                #(bit,) = struct.unpack("<H", inode_map_data[idx : idx + 2])
-                
-                bit = bytearray(f.read(BLOCK_SIZE))
-                print(bit)
-                #print(f'Bit = {str(bit)}')
+                for j in range(8):
+                    if ((intdata >> j) & 1):
+                        idx += 1
+                    else:
+                        zonenr = idx - 1 + sbdict['firstdatazone']
 
 
+
+                print(free_inode_nr)
+                print(zonenr)
+
+
+
+
+            for i in range(10):
+                data = get_inode_data(sbdata, f, i)
+                print(data)
 
 
 
