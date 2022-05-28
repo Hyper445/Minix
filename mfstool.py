@@ -107,6 +107,7 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
                 (filename,) = struct.unpack(f"<{entrysize - 2}s", datazone[idx : idx + entrysize - 2])
 
                 printname = filename.rstrip(b'\0')
+                print(printname)
                 if (printname == b''): continue
                 data[printname] = inode
 
@@ -142,6 +143,7 @@ def get_inode_spot(file, skip_size):
     for i in range(sbdict['ninodes']):
         data = f.read(1)
         intdata = int.from_bytes(data, byteorder ='big')
+        print(f"{bin(intdata)} is binary van gelezen byte")
 
         if (free_inode_nr > 0): break
 
@@ -175,34 +177,82 @@ def get_zone_spot(file, skip_size):
 def get_free_root_entry(sbdata, file, entrysize):
 
     inodenr = entry_nr = 0
-    print(sbdata['firstdatazone'])
     file.seek(BLOCK_SIZE * sbdata['firstdatazone'], 0)
     entrydata = file.read(entrysize)
     inodenr = struct.unpack("<H", entrydata[0 : 2])
 
     while (inodenr != 0):
         entrydata = f.read(entrysize)
-        idx = 0
-        (inodenr,) = struct.unpack("<H", entrydata[idx : idx + 2])
-        print(inodenr)
+        (inodenr,) = struct.unpack("<H", entrydata[0 : 2])
         entry_nr += 1
         
-
-    print(entry_nr)
-    return idx
+    return entry_nr
 
 
 
+def insert_in_table(file, inode, spot_nr):
 
-# def insert_in_table(diskimg, inode, free_spot):
+    #fwrite.write(read)
+    file.seek(BLOCK_SIZE * 4, 0)
+    file.seek((spot_nr - 1) * 32, 1)
+    for key in inode:
+        if (key == "mode" or key == "uid"):
+            entry = struct.pack("<H", inode[key])
+            file.write(entry)
+        if (key == "size" or key == "time"):
+            entry = struct.pack("<L", inode[key])
+            file.write(entry)
+        if (key == "gid" or key == "links"):
+            entry = struct.pack("<B", inode[key])
+            file.write(entry)
 
-#     with open (diskimg, "wb") as fwrite:
-#         #fwrite.write(read)
-#         # fwrite.seek(BLOCK_SIZE * 4, 0)
-#         # fwrite.seek((free_spot - 1) * 32, 1)
-#         print("Test")
+        if (key == "zone"):
+            for i in range(len(inode[key])):
+                entry = struct.pack("<H", inode[key][i])
+                file.write(entry)
+
+def insert_in_root(file, filename, entrysize, spot_nr, inodenr):
+
+    file.seek(BLOCK_SIZE * 15, 0)
+    file.seek(entrysize * spot_nr, 1)
+
+    print(f"{spot_nr} = spot number")
+
+    file.write(struct.pack("<H", inodenr))
+    file.write(struct.pack(f"<{entrysize - 2}s", filename.encode("utf-8")))
+
+def update_root_data(file, sbdict, entrysize):
+
+    file.seek(4 * BLOCK_SIZE, 0)
+    file.seek(4, 1)
+
+    size = file.read(4)
+    (size,) = struct.unpack("<L", size[0 : 4])
+    print(f"{size} = size")
+    size += entrysize
+    f.seek(-4, 1)
+    f.write(struct.pack("<L", size))
+
+def update_inode_map(file, sbdict, inodenr):
+
+    bitnr = inodenr % 8
+    bitnr = 7
+    inodenr = int(inodenr / 8)
+
+    file.seek(2 * BLOCK_SIZE, 0)
+
+    file.seek(inodenr, 1)
+    data = file.read(1)
     
-#         #fwrite.close()
+    intdata = int.from_bytes(data, byteorder ='big')
+    intdata = intdata * 2 + 1
+    #intdata = intdata | bitnr << 1
+
+    file.seek(-1, 1)
+    intdata = intdata.to_bytes(1, "big")
+    file.write(intdata)
+    file.seek(-1, 1)
+    print(f"{int.from_bytes(file.read(1), byteorder='big')} int in byte")
 
 
 if __name__ == "__main__":
@@ -216,7 +266,7 @@ if __name__ == "__main__":
         file = sys.argv[3]
         file_split = file.split("/")    
 
-    with open(diskimg, "rb") as f:
+    with open(diskimg, "rb+") as f:
 
         # Skip boot block
         f.seek(BLOCK_SIZE, 0)
@@ -236,7 +286,7 @@ if __name__ == "__main__":
         inodedata = get_inode_data(sbdata, f, 0)
         rootdata = get_zone_data(f, inodedata, entrysize)
 
-        print(rootdata)
+        print(f"{rootdata} = rootdata")
 
         # Get the files in the root data
         if (cmd == 'ls'): 
@@ -272,10 +322,11 @@ if __name__ == "__main__":
         # #     except:
         # #         print("Couldn't find file!")
         
-        if (cmd == 'touch'):
+        if (cmd == 'touch' and len(sys.argv) > 3):
 
             skipped_size = BLOCK_SIZE * 2
             free_inode_nr = get_inode_spot(f, skipped_size)
+            print(f"{free_inode_nr} = free inode")
 
             skipped_size = BLOCK_SIZE * (2 + sbdict['imap_blocks'])
             free_zone_nr = get_zone_spot(f, skipped_size) + sbdict['firstdatazone']
@@ -293,22 +344,11 @@ if __name__ == "__main__":
 
             root_entry_nr = get_free_root_entry(sbdict, f, entrysize)
 
-            #update_datazone(diskimg, root_entry_nr)
+            insert_in_table(f, new_inode, free_inode_nr)
+            insert_in_root(f, file_split[0], entrysize, root_entry_nr, free_inode_nr)
+            update_root_data(f, sbdict, entrysize)
+            update_inode_map(f, sbdict, free_inode_nr)
 
-    
-    if (cmd == 'touch'):
-
-        #f.close()
-        #insert_in_table(diskimg, new_inode, free_inode_nr)
-
-        with open (diskimg, "w") as f:
-            #fwrite.write(read)
-            # fwrite.seek(BLOCK_SIZE * 4, 0)
-            # fwrite.seek((free_spot - 1) * 32, 1)
-            print("Hoi")
-            print(f.tell())
-            #f.seek(0, 0)
-            #fwrite.close()
 
 
 
