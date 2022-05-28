@@ -107,7 +107,6 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
                 (filename,) = struct.unpack(f"<{entrysize - 2}s", datazone[idx : idx + entrysize - 2])
 
                 printname = filename.rstrip(b'\0')
-                print(printname)
                 if (printname == b''): continue
                 data[printname] = inode
 
@@ -135,7 +134,6 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
 
 def get_inode_spot(file, skip_size):
 
-
     file.seek(skip_size, 0)
     free_inode_nr = idx = 0
 
@@ -143,7 +141,6 @@ def get_inode_spot(file, skip_size):
     for i in range(sbdict['ninodes']):
         data = f.read(1)
         intdata = int.from_bytes(data, byteorder ='big')
-        print(f"{bin(intdata)} is binary van gelezen byte")
 
         if (free_inode_nr > 0): break
 
@@ -188,6 +185,18 @@ def get_free_root_entry(sbdata, file, entrysize):
         
     return entry_nr
 
+def make_inode(mode, zonenr, size):
+
+    new_inode = {}
+    new_inode['mode'] = mode
+    new_inode['uid'] = 0
+    new_inode['size'] = size
+    new_inode['time'] = int(datetime.now().timestamp())
+    new_inode['gid'] = 0
+    new_inode['links'] = 1
+    new_inode['zone'] = [zonenr, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    return new_inode
 
 
 def insert_in_table(file, inode, spot_nr):
@@ -216,8 +225,6 @@ def insert_in_root(file, filename, entrysize, spot_nr, inodenr):
     file.seek(BLOCK_SIZE * 15, 0)
     file.seek(entrysize * spot_nr, 1)
 
-    print(f"{spot_nr} = spot number")
-
     file.write(struct.pack("<H", inodenr))
     file.write(struct.pack(f"<{entrysize - 2}s", filename.encode("utf-8")))
 
@@ -228,31 +235,34 @@ def update_root_data(file, sbdict, entrysize):
 
     size = file.read(4)
     (size,) = struct.unpack("<L", size[0 : 4])
-    print(f"{size} = size")
     size += entrysize
     f.seek(-4, 1)
     f.write(struct.pack("<L", size))
 
-def update_inode_map(file, sbdict, inodenr):
+def update_map(file, skip_size, spotnr):
 
-    bitnr = inodenr % 8
-    bitnr = 7
-    inodenr = int(inodenr / 8)
+    spotnr = int(spotnr / 8)
 
-    file.seek(2 * BLOCK_SIZE, 0)
+    file.seek(skip_size, 0)
 
-    file.seek(inodenr, 1)
+    file.seek(spotnr, 1)
     data = file.read(1)
     
     intdata = int.from_bytes(data, byteorder ='big')
     intdata = intdata * 2 + 1
-    #intdata = intdata | bitnr << 1
 
     file.seek(-1, 1)
     intdata = intdata.to_bytes(1, "big")
     file.write(intdata)
-    file.seek(-1, 1)
-    print(f"{int.from_bytes(file.read(1), byteorder='big')} int in byte")
+
+def insert_in_zone_directory(file, inode_nr, zonenr, entrysize):
+
+    file.seek(zonenr * BLOCK_SIZE)
+
+    file.write(struct.pack("<H", 1))
+    file.write(struct.pack(f"<{entrysize}s", ".".encode("utf-8")))
+    file.write(struct.pack("<H", inode_nr))
+    file.write(struct.pack(f"<{entrysize}s", "..".encode("utf-8")))
 
 
 if __name__ == "__main__":
@@ -271,14 +281,9 @@ if __name__ == "__main__":
         # Skip boot block
         f.seek(BLOCK_SIZE, 0)
         # Read super block
-        print(f.tell())
         sbdata = f.read(BLOCK_SIZE)
-        print(f.tell())
         # Save data from superblock in sbdict
         sbdict = parse_superblock(sbdata)
-        print(sbdict)
-
-        print(os.stat(diskimg).st_size)
 
         if (sbdict['magic'] == 4991): entrysize = 16
         else: entrysize = 32
@@ -286,68 +291,81 @@ if __name__ == "__main__":
         inodedata = get_inode_data(sbdata, f, 0)
         rootdata = get_zone_data(f, inodedata, entrysize)
 
-        print(f"{rootdata} = rootdata")
-
         # Get the files in the root data
         if (cmd == 'ls'): 
-            print(rootdata)
             for i in rootdata:
                 sys.stdout.buffer.write(i)
                 sys.stdout.buffer.write(b'\n')
 
-        # # if (cmd == 'cat'):
-        # #     directory_data = rootdata
-        # #     j = 0
+        if (cmd == 'cat'):
+            directory_data = rootdata
+            j = 0
 
-        # #     # Go through the directories to find the file
-        # #     for i in range (len(file_split) - 1):
+            # Go through the directories to find the file
+            for i in range (len(file_split) - 1):
+                try:
+                    inodenr = directory_data[file_split[i].encode("utf-8")]
+                    directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
+                    directory_data = get_zone_data(f, directory_inode_data, entrysize)
+                    j += 1
+                except:
+                    print("Couldn't find file!")
 
-        # #         try:
-        # #             inodenr = directory_data[file_split[i].encode("utf-8")]
-        # #             directory_inode_data = get_inode_data(sbdata, f, inodenr - 1)
-        # #             directory_data = get_zone_data(f, directory_inode_data, 1)
-        # #             j += 1
-        # #         except:
-        # #             print("Couldn't find file!")
+            # Read the text from the file
+            try:
+                inodenr = directory_data[file_split[j].encode("utf-8")]
+                inode_data = get_inode_data(sbdata, f, inodenr - 1)
+                inodezonedata = get_zone_data(f, inode_data, 1)
 
-        # #     # Read the text from the file
-        # #     try:
-        # #         inodenr = directory_data[file_split[j].encode("utf-8")]
-        # #         inode_data = get_inode_data(sbdata, f, inodenr - 1)
-        # #         inodezonedata = get_zone_data(f, inode_data, 1)
+                for item in inodezonedata:
+                    sys.stdout.buffer.write(inodezonedata[item])
 
-        # #         for item in inodezonedata:
-        # #             sys.stdout.buffer.write(inodezonedata[item])
-
-        # #     except:
-        # #         print("Couldn't find file!")
+            except:
+                print("Couldn't find file!")
         
-        if (cmd == 'touch' and len(sys.argv) > 3):
+        if (cmd == 'touch' or cmd == 'mkdir' and len(sys.argv) > 3):
 
-            skipped_size = BLOCK_SIZE * 2
-            free_inode_nr = get_inode_spot(f, skipped_size)
-            print(f"{free_inode_nr} = free inode")
+            INODE_MAP = BLOCK_SIZE * 2
+            free_inode_nr = get_inode_spot(f, INODE_MAP)
 
-            skipped_size = BLOCK_SIZE * (2 + sbdict['imap_blocks'])
-            free_zone_nr = get_zone_spot(f, skipped_size) + sbdict['firstdatazone']
+            ZONE_MAP = BLOCK_SIZE * (2 + sbdict['imap_blocks'])
+            free_zone_nr = get_zone_spot(f, ZONE_MAP) + sbdict['firstdatazone']
 
             if (free_inode_nr) == 0: print("Full, baybee.")
             
-            new_inode = {}
-            new_inode['mode'] = S_IFREG
-            new_inode['uid'] = 0
-            new_inode['size'] = 0
-            new_inode['time'] = int(datetime.now().timestamp())
-            new_inode['gid'] = 0
-            new_inode['links'] = 1
-            new_inode['zone'] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+            if cmd == 'touch': 
+                mode = S_IFREG
+                zone_nr = 0
+                size = 0
+            elif cmd == 'mkdir': 
+                mode = S_IFDIR
+                zone_nr = free_zone_nr
+                size = 32
+
+            new_inode = make_inode(mode, zone_nr, size)
 
             root_entry_nr = get_free_root_entry(sbdict, f, entrysize)
 
             insert_in_table(f, new_inode, free_inode_nr)
             insert_in_root(f, file_split[0], entrysize, root_entry_nr, free_inode_nr)
             update_root_data(f, sbdict, entrysize)
-            update_inode_map(f, sbdict, free_inode_nr)
+            update_map(f, INODE_MAP, free_inode_nr)
+
+
+            # Insert '.' and '..' in newly made directory
+            if (cmd == "mkdir"):
+                insert_in_zone_directory(f, free_inode_nr, free_zone_nr, entrysize)
+                update_map(f, ZONE_MAP, free_zone_nr - sbdict["firstdatazone"])
+                print(get_inode_data(sbdata, f, free_inode_nr- 1))
+
+
+            print(get_zone_data(f, new_inode, entrysize))
+        
+        # print(rootdata)
+        # print("\n\n\n")
+        # for i in range(10):
+        #     print(get_inode_data(sbdata, f, i))
+
 
 
 
