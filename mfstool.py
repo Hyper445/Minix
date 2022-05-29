@@ -186,6 +186,7 @@ def get_zone_spot(file, skip_size):
             if ((intdata >> j) & 1):
                 idx += 1
             else:
+                print(idx - 1)
                 return idx - 1
 
     return 0
@@ -260,7 +261,9 @@ def update_root_data(file, sbdict, entrysize):
 
 def update_map(file, skip_size, spotnr):
 
-    spotnr = int(spotnr / 7)
+    spotnr = spotnr % 7
+
+    print(f"{spotnr} = spotnr")
 
     file.seek(skip_size, 0)
 
@@ -268,11 +271,14 @@ def update_map(file, skip_size, spotnr):
     data = file.read(1)
     
     intdata = int.from_bytes(data, byteorder ='big')
+    print(intdata)
 
     intdata = intdata * 2 + 1
+    print(intdata)
 
     file.seek(-1, 1)
     intdata = intdata.to_bytes(1, "big")
+    print(intdata)
     file.write(intdata)
 
 def insert_in_zone_directory(file, inode_nr, zonenr, entrysize):
@@ -372,44 +378,49 @@ if __name__ == "__main__":
             inode_data = get_inode_data(sbdata, f, inodenr - 1)
             inodezonedata = get_zone_data(f, inode_data, BLOCK_SIZE)
 
+            # Go over every zone
             for i in range(7):
+
+                
                 if (inode_data['zone'][i] > 0):
                     f.seek(BLOCK_SIZE * inode_data['zone'][i], 0)
-                    free_zone_space = BLOCK_SIZE - len(get_one_zone_data(f, BLOCK_SIZE))
                     
-                    
+                    # Determine the amount of data can still be written
+                    current_data = get_one_zone_data(f, BLOCK_SIZE)
+                    free_zone_space = BLOCK_SIZE - len(current_data)
+                    f.seek(len(current_data), 1)
+                                   
                 elif (inode_data['zone'][i] == 0 and appenddata != ''):
                     free_zone_space = BLOCK_SIZE
-                    
-                    
-                    
-                    written_data = appenddata
-                    if not (free_zone_space > len(appenddata)): 
-                        print("kleiner dan")
-                        written_data = appenddata[0 : free_zone_space]
-                        appenddata = appenddata[free_zone_space:]
-                    else:
-                        print("hier")
-                        written_data = appenddata
-                        appenddata = ''
-
-                    
-                    print(written_data)
-                    print(appenddata)
-                    f.write(struct.pack(f"<{free_zone_space}s", written_data.encode("utf-8")))
-
-                elif (inode_data['zone'][i] == 0 and appenddata != ''):
-                    print(appenddata)
                     free_zone_nr = get_zone_spot(f, ZONE_MAP) + sbdict['firstdatazone']
-                    f.seek(BLOCK_SIZE * free_zone_nr, 0)
-                    f.write(struct.pack(f"<{len(appenddata)}s", appenddata.encode("utf-8")))
+                    f.seek(BLOCK_SIZE * free_zone_nr, 0)              
+                    
+                # Updata the to be written data to fit in the block
+                written_data = appenddata
+                if not (free_zone_space > len(appenddata)): 
+                    written_data = appenddata[0 : free_zone_space]
+                    appenddata = appenddata[free_zone_space:]
+                else:
+                    written_data = appenddata
+                    appenddata = ''
+
+                f.write(struct.pack(f"<{len(written_data)}s", written_data.encode("utf-8")))
+
+                inode_data['size'] = inode_data['size'] + len(written_data)
+                insert_in_table(f, inode_data, inodenr)
+
+                # If the data zone was empty and data has been written to that zone
+                if (inode_data['zone'][i] == 0 and len(written_data) > 0):   
+             
                     inode_data['zone'][i] = free_zone_nr
-                    inode_data['size'] = inode_data['size'] + len(appenddata)
-                    insert_in_table(f, inode_data, inodenr)
+                    print(free_zone_nr)
                     update_map(f, ZONE_MAP, free_zone_nr - sbdict["firstdatazone"])
 
             for item in inodezonedata:
-                sys.stdout.buffer.write(inodezonedata[item])
+                print(inode_data['zone'][0])
+                f.seek(inode_data['zone'][0] * BLOCK_SIZE, 0)
+                get_one_zone_data(f, BLOCK_SIZE)
+                #sys.stdout.buffer.write(inodezonedata[item])
 
             #except:
             #    print("Couldn't find file!")
@@ -420,7 +431,7 @@ if __name__ == "__main__":
         
         # print(rootdata)
         # print("\n\n")
-        for i in range(6):
+        for i in range(0, 5):
             print(get_inode_data(sbdata, f, i))
 
 
