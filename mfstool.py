@@ -6,6 +6,7 @@ import math
 
 BLOCK_SIZE = 1024
 
+
 # Returns a dictionary with information about the the superblock
 def parse_superblock(sbdata):
     sbdict = {}
@@ -31,6 +32,7 @@ def parse_superblock(sbdata):
     idx += 2
 
     return sbdict
+
 
 # Returns a dictionary with information about the the inodetable
 def parse_inodetable(sbdata):
@@ -59,6 +61,7 @@ def parse_inodetable(sbdata):
 
     return sbinodeentry
 
+
 # Get the data of the specified inode
 def get_inode_data(sbdata, f, inodenr):
 
@@ -76,6 +79,7 @@ def get_inode_data(sbdata, f, inodenr):
         inodedata = parse_inodetable(inodedatafile)
 
     return inodedata
+
 
 # Extract the data from a specified zone
 def get_one_zone_data(diskimg, size):
@@ -141,6 +145,7 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
 
     return data
 
+
 # If a file is in a directory, loop through the directories to
 # find the file
 def go_to_dir(f, file_split, directory_data, entrysize):
@@ -160,6 +165,7 @@ def go_to_dir(f, file_split, directory_data, entrysize):
             print("Couldn't find directory!")
 
     return directory_data
+
 
 # Find which inode is available
 def get_inode_spot(file, skip_size):
@@ -181,6 +187,7 @@ def get_inode_spot(file, skip_size):
                 return idx
 
     return 0
+
 
 # Find which zone is available
 def get_zone_spot(file, skip_size):
@@ -337,6 +344,7 @@ if __name__ == "__main__":
                 sys.stdout.buffer.write(i)
                 sys.stdout.buffer.write(b'\n')
 
+        # Print text from a specific file
         if (cmd == 'cat'):
 
             directory_data = go_to_dir(f, file_split, rootdata, entrysize)
@@ -348,24 +356,28 @@ if __name__ == "__main__":
                 inode_data = get_inode_data(sbdata, f, inodenr - 1)
                 inodezonedata = get_zone_data(f, inode_data, BLOCK_SIZE)
 
+                # Print text
                 for item in inodezonedata:
                     sys.stdout.buffer.write(inodezonedata[item])
 
             except KeyError:
                 print("Couldn't find file!")
 
+        # Make a directory or touch
         if (cmd == 'touch' or cmd == 'mkdir' and len(sys.argv) > 3):
 
             free_inode_nr = get_inode_spot(f, INODE_MAP)
             free_zone_nr = get_zone_spot(f, ZONE_MAP) + sbdict['firstdatazone']
 
+            # Make inode depending on type
             if cmd == 'touch':
-                new_inode = make_inode(S_IFREG, 0, 0)
+                new_inode = make_inode(S_IFREG, 0, 0,)
             elif cmd == 'mkdir':
                 new_inode = make_inode(S_IFDIR, free_zone_nr, entrysize * 2)
 
             root_entry_nr = get_free_root_entry(sbdict, f, entrysize)
 
+            # Update data where needed
             insert_in_table(f, new_inode, free_inode_nr)
             insert_in_zone_directory(f, file_split[0], entrysize, root_entry_nr, free_inode_nr, sbdict['firstdatazone'])
             update_root_data(f, sbdict, entrysize)
@@ -377,6 +389,7 @@ if __name__ == "__main__":
                 insert_in_zone_directory(f, "..", entrysize, 1, free_inode_nr, free_zone_nr)
                 update_map(f, ZONE_MAP, free_zone_nr - sbdict["firstdatazone"])
 
+        # Add text to a file
         if (cmd == "append" and len(sys.argv) > 4):
             directory_data = go_to_dir(f, file_split, rootdata, entrysize)
             filename = file_split[len(file_split) - 1]
