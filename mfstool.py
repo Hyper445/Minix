@@ -1,3 +1,15 @@
+#######################################################
+#
+#   Dennis Vet - 11341408 - PreMsc SE
+#   mfstool.py beinlvoed het Minix filesysteem
+#   files en directroies kunnen worden toegevoegd met
+#   'touch' en 'mkdir',
+#   de lijst van files in de root worden geprint met 'ls',
+#   de inhoud van files kunnen worden laten zien met 'cat'
+#   en data kan geschreven worden naar files met 'append'
+#
+#########################################################
+
 from stat import *
 import sys
 import struct
@@ -108,7 +120,6 @@ def get_one_zone_data(diskimg, size):
 
 # Get the data from multiple zones
 def get_zone_data(diskimg, inodeinfo, entrysize):
-
     data = {}
     zoneindex = 0
     zone = inodeinfo['zone'][zoneindex]
@@ -131,7 +142,6 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
                     data[name] = inodenr
 
         if (S_ISREG(inodeinfo['mode'])):
-
             size = inodeinfo['size']
             if (inodeinfo['size'] > BLOCK_SIZE):
                 size = BLOCK_SIZE
