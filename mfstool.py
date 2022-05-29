@@ -118,7 +118,8 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
         if (S_ISDIR(inodeinfo['mode'])):
             for i in range(loopamount):
                 name, inodenr = get_one_zone_data(diskimg, entrysize)
-                if (name != ''): data[name] = inodenr
+                if (name != b''): data[name] = inodenr
+
 
         if (S_ISREG(inodeinfo['mode'])):
 
@@ -126,7 +127,7 @@ def get_zone_data(diskimg, inodeinfo, entrysize):
             if (inodeinfo['size'] > BLOCK_SIZE): size = BLOCK_SIZE
 
             text = get_one_zone_data(diskimg, size)
-            if (text != ''): data[zone] = text
+            if (text != b''): data[zone] = text
 
         zoneindex += 1
         zone = inodeinfo['zone'][zoneindex]
@@ -259,7 +260,7 @@ def update_root_data(file, sbdict, entrysize):
 
 def update_map(file, skip_size, spotnr):
 
-    spotnr = int(spotnr / 8)
+    spotnr = int(spotnr / 7)
 
     file.seek(skip_size, 0)
 
@@ -267,6 +268,7 @@ def update_map(file, skip_size, spotnr):
     data = file.read(1)
     
     intdata = int.from_bytes(data, byteorder ='big')
+
     intdata = intdata * 2 + 1
 
     file.seek(-1, 1)
@@ -327,7 +329,7 @@ if __name__ == "__main__":
             try:
                 inodenr = directory_data[filename.encode("utf-8")]
                 inode_data = get_inode_data(sbdata, f, inodenr - 1)
-                inodezonedata = get_zone_data(f, inode_data, 1)
+                inodezonedata = get_zone_data(f, inode_data, BLOCK_SIZE)
 
                 for item in inodezonedata:
                     sys.stdout.buffer.write(inodezonedata[item])
@@ -339,8 +341,6 @@ if __name__ == "__main__":
 
             free_inode_nr = get_inode_spot(f, INODE_MAP)
             free_zone_nr = get_zone_spot(f, ZONE_MAP) + sbdict['firstdatazone']
-
-            if (free_inode_nr) == 0: print("Full, baybee.")
             
             if cmd == 'touch': 
                 new_inode = make_inode(S_IFREG, 0, 0)
@@ -361,45 +361,68 @@ if __name__ == "__main__":
                 update_map(f, ZONE_MAP, free_zone_nr - sbdict["firstdatazone"])
                 print(get_inode_data(sbdata, f, free_inode_nr- 1))
 
-            print(new_inode)
-            print(f"zone data = {get_zone_data(f, new_inode, entrysize)}")
-
-        if (cmd == "append" and len(sys.argv) > 3):
-            free_zone_nr = get_zone_spot(f, ZONE_MAP) + sbdict['firstdatazone']
+        if (cmd == "append" and len(sys.argv) > 4):
             directory_data = go_to_dir(f, file_split, rootdata, entrysize)
             filename = file_split[len(file_split) - 1]
+            appenddata = sys.argv[4]
 
             # Read the text from the file
-            try:
-                inodenr = directory_data[filename.encode("utf-8")]
-                inode_data = get_inode_data(sbdata, f, inodenr - 1)
-                inodezonedata = get_zone_data(f, inode_data, BLOCK_SIZE)
+            #try:
+            inodenr = directory_data[filename.encode("utf-8")]
+            inode_data = get_inode_data(sbdata, f, inodenr - 1)
+            inodezonedata = get_zone_data(f, inode_data, BLOCK_SIZE)
 
-                for i in range(len(inode_data['zone'])):
-                    if (inode_data['zone'][i] > 0):
-                        #get_zone_data(f, )
-                        print("Hoi")
+            for i in range(7):
+                if (inode_data['zone'][i] > 0):
+                    f.seek(BLOCK_SIZE * inode_data['zone'][i], 0)
+                    free_zone_space = BLOCK_SIZE - len(get_one_zone_data(f, BLOCK_SIZE))
+                    
+                    
+                elif (inode_data['zone'][i] == 0 and appenddata != ''):
+                    free_zone_space = BLOCK_SIZE
+                    
+                    
+                    
+                    written_data = appenddata
+                    if not (free_zone_space > len(appenddata)): 
+                        print("kleiner dan")
+                        written_data = appenddata[0 : free_zone_space]
+                        appenddata = appenddata[free_zone_space:]
+                    else:
+                        print("hier")
+                        written_data = appenddata
+                        appenddata = ''
 
+                    
+                    print(written_data)
+                    print(appenddata)
+                    f.write(struct.pack(f"<{free_zone_space}s", written_data.encode("utf-8")))
 
-                    print(inode_data['zone'][i])
+                elif (inode_data['zone'][i] == 0 and appenddata != ''):
+                    print(appenddata)
+                    free_zone_nr = get_zone_spot(f, ZONE_MAP) + sbdict['firstdatazone']
+                    f.seek(BLOCK_SIZE * free_zone_nr, 0)
+                    f.write(struct.pack(f"<{len(appenddata)}s", appenddata.encode("utf-8")))
+                    inode_data['zone'][i] = free_zone_nr
+                    inode_data['size'] = inode_data['size'] + len(appenddata)
+                    insert_in_table(f, inode_data, inodenr)
+                    update_map(f, ZONE_MAP, free_zone_nr - sbdict["firstdatazone"])
 
-                print(inode_data)
-                print(inodezonedata)
+            for item in inodezonedata:
+                sys.stdout.buffer.write(inodezonedata[item])
 
-                for item in inodezonedata:
-                    sys.stdout.buffer.write(inodezonedata[item])
-
-            except:
-                print("Couldn't find file!")
+            #except:
+            #    print("Couldn't find file!")
 
 
 
 
         
         # print(rootdata)
-        # print("\n\n\n")
-        # for i in range(10):
-        #     print(get_inode_data(sbdata, f, i))
+        # print("\n\n")
+        for i in range(6):
+            print(get_inode_data(sbdata, f, i))
+
 
 
 
